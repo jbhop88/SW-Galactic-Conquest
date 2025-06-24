@@ -355,8 +355,8 @@ if (isEnemyOrNeutral) {
       target.conquered = false;
       target.aiControlled = true;
       target.garrison = 100;
-      f.units -= target.garrison;
-      if (f.units < 0) f.units = 0;
+      selectedFleet.units -= target.garrison;
+      if (selectedFleet.units < 0) selectedFleet.units = 0;
 
     }
   } else {
@@ -402,8 +402,8 @@ if (isEnemyOrNeutral) {
       target.conquered = false;
       target.aiControlled = true;
       target.garrison = 100;
-      f.units -= target.garrison;
-      if (f.units < 0) f.units = 0;
+      selectedFleet.units -= target.garrison;
+      if (selectedFleet.units < 0) selectedFleet.units = 0;
 
     }
   } else {
