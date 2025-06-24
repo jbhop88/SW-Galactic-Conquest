@@ -289,7 +289,7 @@ function handleSystemClick(id) {
   const isPlayerFleet = fleets.includes(selectedFleet);
 
   // Moving a selected fleet
-  if (selectedFleet && !selectedFleet.hasMoved && areAdjacent(selectedFleet.systemId, id)) {
+  if (selectedFleet && !selectedFleet.hasMoved && (areAdjacent(selectedFleet.systemId, id) || selectedFleet.systemId === id)) {
     const enemyFleet = isPlayerFleet
       ? aiFleets.find(f => f.systemId === id)
       : fleets.find(f => f.systemId === id);
@@ -466,7 +466,7 @@ aiFleets.forEach(f => {
       areAdjacent(f.systemId, id)
     );
 
-  const adjacentSystems = adjacents.map(id => systems[id]);
+  const adjacentSystems = Array.from(new Set([...adjacents, f.systemId])).map(id => systems[id]);
 
   const neutralTargets = adjacentSystems.filter(s => !s.conquered && !s.aiControlled);
   const playerTargets = adjacentSystems.filter(s => s.conquered && !s.aiControlled);
@@ -648,7 +648,7 @@ const garrisonAmount = Math.min(availableSpace, f.units);
     areAdjacent(f.systemId, id)
   );
 
-const adjacentSystems = adjacents.map(id => systems[id]);
+const adjacentSystems = Array.from(new Set([...adjacents, f.systemId])).map(id => systems[id]);
 
 const neutralTargets = adjacentSystems.filter(s => !s.conquered && !s.aiControlled);
 const playerTargets = adjacentSystems.filter(s => s.conquered && !s.aiControlled);
