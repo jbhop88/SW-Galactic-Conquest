@@ -1,4 +1,4 @@
-# Star Wars Galactic Conquest
+# Star Wars Battlefront 2 Galactic Conquest companion
 
 This is a simple browser-based strategy prototype inspired by the **Galactic Conquest** game mode from the Star Wars Battlefront series.  The project consists of a single HTML file that renders a grid of planetary systems.  Players manage fleets and resources while the AI opponent does the same.
 
@@ -27,4 +27,4 @@ This is a simple browser-based strategy prototype inspired by the **Galactic Con
 - **Turn-Based AI** – An AI opponent gathers income, moves fleets, and attempts to conquer or blockade your worlds.
 - **Manual Combat Resolution** – Battles and invasions are resolved via simple confirmation prompts, allowing the player to narrate outcomes.
 
-This prototype can serve as a starting point for a more companion tool for campaigns.
+This prototype can serve as a starting point for a more developed companion tool for campaigns.
