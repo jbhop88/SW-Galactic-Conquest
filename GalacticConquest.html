@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Galactic Conquest Grid</title>
+  <style>
+    body { font-family: sans-serif; background: #000; color: #fff; text-align: center; }
+    .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 100px);
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+    .system {
+      width: 100px;
+      height: 100px;
+      background-color: #333;
+      border: 2px solid #555;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+      position: relative;
+    }
+    .home { background-color: green; }
+    .conquered { background-color: darkred; }
+    .ai-controlled { background-color: darkblue; }
+    .fleet {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      font-size: 10px;
+      background: yellow;
+      color: black;
+      padding: 2px;
+      border-radius: 3px;
+    }
+    .controls, .inline-form { margin-top: 10px; }
+    .inline-form { display: inline-block; background: #222; padding: 10px; border: 1px solid #444; margin: 5px; }
+    input, select { width: 60px; }
+    button { margin: 5px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+
+<h1>Galactic Conquest</h1>
+<h3 id="resourceDisplay">Player Resources: 100 | AI Resources: 100</h3>
+
+<div class="grid" id="mapGrid"></div>
+
+<div class="controls">
+  <button onclick="endTurn()">End Turn</button>
+  <button onclick="createFleet()">Create Fleet</button>
+  <button onclick="boostEconomy()">Boost Economy</button>
+  <button onclick="garrisonUnits()">Garrison Units</button>
+</div>
+
+<div class="inline-form">
+  <strong>Replenish Units</strong><br>
+  <input type="number" id="replenishAmount" placeholder="Units"> 
+  <button onclick="replenishUnits()">Replenish</button>
+</div>
+
+<div class="inline-form">
+  <strong>Report Player Losses</strong><br>
+  <input type="number" id="lossAmount" placeholder="Lost Units"> 
+  <button onclick="reportLosses()">Apply Loss</button>
+</div>
+
+<div class="inline-form">
+  <strong>Report AI Losses</strong><br>
+  <select id="aiFleetSelect"></select><br>
+  <input type="number" id="aiLossAmount" placeholder="Lost Units"> 
+  <button onclick="reportAiLosses()">Apply AI Loss</button>
+</div>
+
+<div class="inline-form">
+  <strong>Report Garrison Losses</strong><br>
+  <select id="garrisonSelect"></select><br>
+  <input type="number" id="garrisonLossAmount" placeholder="Losses">
+  <button onclick="reportGarrisonLosses()">Apply Garrison Loss</button>
+</div>
+
+
+<script>
+
+const systemNames = [
+  "Alaris Prime", "Rhen Var", "Crathe", "Bakura", "Galva Minor", "Mimban", "Aldura", "Myddria",
+  "Maloss", "Hymar", "Nar Shaddaa", "Bespin", "Coruscant", "Chandrila", "Raxus Prime", "Hypori",
+  "Polis Massa", "Fest", "Galidraan", "Duro", "Felucia", "Mygeeto", "Corellia", "Mon Calamari",
+  "Dantooine", "Muunilist", "Imdaar", "Taris", "Naboo", "Ryloth", "Kashyyyk", "Kamino",
+  "Saleucami", "Geonosis", "Alderaan", "Hii", "Dagobah", "Mustafar", "Sullust", "Tatooine",
+  "Utapau", "Murkhana", "Jabiim", "Korriban", "Boz Pity", "Daermor", "Ellera Prime",
+  "Balmorra", "Jedha", "Eadu", "Malachor", "Ilum", "Sraiden", "Hoth", "Jandoon", "Endor"
+];
+
+
+const republicPlanets = [
+  "Alderaan", "Chandrila", "Corellia", "Coruscant",
+  "Mon Calamari", "Naboo",
+  "Dantooine", "Kamino", "Kashyyyk", "Polis Massa"
+];
+
+const cisPlanets = [
+  "Sullust",
+  "Duro", "Felucia", "Geonosis", "Hypori", "Muunilist", "Murkhana", "Mustafar", "Mygeeto",
+  "Raxus Prime", "Ryloth", "Saleucami"
+];
+
+const neutralPlanets = [
+  "Bespin", "Nar Shaddaa", "Tatooine", "Utapau"
+];
+
+const unknownPlanets = [
+  "Alaris Prime", "Aldura", "Bakura", "Balmorra", "Boz Pity", "Crathe", "Daermor",
+  "Dagobah", "Eadu", "Ellera Prime", "Endor", "Fest", "Galidraan", "Galva Minor", "Hii", "Hoth",
+  "Hymar", "Ilum", "Imdaar", "Jabiim", "Jandoon", "Jedha", "Korriban", "Malachor", "Maloss",
+  "Mimban", "Myddria", "Rhen Var", "Sraiden", "Taris", "Thule", "Tibrin", "Verena", "Veriss",
+  "Virmund", "Weyland", "Wobani", "Xagobah", "Yavin"
+];
+
+const isRepublic = confirm("Do you want to play as the Republic?");
+
+const gridSize = Math.ceil(Math.sqrt(systemNames.length));
+
+
+let systems = [];
+let playerResources = 100;
+let aiResources = 100;
+let fleets = [];
+let aiFleets = [];
+let selectedSystem = null;
+let selectedFleet = null;
+
+const fleetCost = 100;
+const boostCost = 75;
+
+for (let i = 0; i < systemNames.length; i++) {
+  const name = systemNames[i];
+
+  let conquered = false;
+  let aiControlled = false;
+
+  if (republicPlanets.includes(name)) {
+    conquered = isRepublic;
+    aiControlled = !isRepublic;
+  } else if (cisPlanets.includes(name)) {
+    conquered = !isRepublic;
+    aiControlled = isRepublic;
+  } else if (neutralPlanets.includes(name)) {
+    conquered = false;
+    aiControlled = false;
+  } else if (unknownPlanets.includes(name)) {
+    conquered = false;
+    aiControlled = false;
+  }
+
+let garrison = 100;
+
+// Assign random garrison to neutral planets
+if (!conquered && !aiControlled) {
+  const garrisonOptions = [25, 50, 100, 150];
+  garrison = garrisonOptions[Math.floor(Math.random() * garrisonOptions.length)];
+}
+
+systems.push({
+  id: i,
+  name,
+  conquered,
+  aiControlled,
+  income: Math.floor(Math.random() * 10) + 5,
+  boosted: false,
+  garrison
+});
+
+}
+
+
+
+const coruscant = systems.find(s => s.name === "Coruscant");
+const geonosis = systems.find(s => s.name === "Geonosis");
+
+if (isRepublic && coruscant) {
+  fleets.push({ systemId: coruscant.id, units: 500, hasMoved: false });
+  aiFleets.push({ systemId: geonosis.id, units: 500, hasMoved: false });
+} else if (geonosis && coruscant) {
+  aiFleets.push({ systemId: coruscant.id, units: 500, hasMoved: false });
+  fleets.push({ systemId: geonosis.id, units: 500, hasMoved: false });
+}
+
+function getXY(id) {
+  return [id % gridSize, Math.floor(id / gridSize)];
+}
+function areAdjacent(id1, id2) {
+  const [x1, y1] = getXY(id1);
+  const [x2, y2] = getXY(id2);
+  return Math.abs(x1 - x2) + Math.abs(y1 - y2) === 1;
+}
+
+function createGrid() {
+  const grid = document.getElementById('mapGrid');
+  grid.innerHTML = '';
+  document.getElementById("mapGrid").style.gridTemplateColumns = `repeat(${gridSize}, 100px)`;
+
+  systems.forEach(sys => {
+    const btn = document.createElement('div');
+    btn.classList.add('system');
+    if (sys.conquered) btn.classList.add('conquered');
+    if (sys.aiControlled) btn.classList.add('ai-controlled');
+    if (sys.id === 0) btn.classList.add('home');
+
+    btn.dataset.id = sys.id;
+    btn.onclick = () => handleSystemClick(sys.id);
+    btn.innerHTML = `<strong>${sys.name}</strong><br>💰${sys.income}<br>🛡️${sys.garrison}`;
+
+    fleets.forEach(f => {
+      if (f.systemId === sys.id) {
+        const div = document.createElement('div');
+        div.className = 'fleet';
+        div.innerText = `P:${f.units}`;
+        div.onclick = (e) => {
+          e.stopPropagation();
+          selectedFleet = f;
+          alert(`Selected fleet at ${sys.name}`);
+        };
+        btn.appendChild(div);
+      }
+    });
+
+    aiFleets.forEach(f => {
+      if (f.systemId === sys.id) {
+        const div = document.createElement('div');
+        div.className = 'fleet';
+        div.style.background = 'red';
+        div.innerText = `AI:${f.units}`;
+        btn.appendChild(div);
+      }
+    });
+
+    grid.appendChild(btn);
+  });
+
+  updateAISelect();
+  updateResources();
+  updateGarrisonSelect();
+}
+
+
+function aiGarrison(fleet) {
+  const sys = systems[fleet.systemId];
+  if (sys.aiControlled && !sys.conquered) {
+    const available = 2500 - sys.garrison;
+    const amount = Math.min(available, fleet.units);
+    if (amount > 0) {
+      sys.garrison += amount;
+      fleet.units -= amount;
+    }
+  }
+}
+
+
+function updateGarrisonSelect() {
+  const select = document.getElementById("garrisonSelect");
+  select.innerHTML = "";
+  systems.forEach((s, idx) => {
+    const option = document.createElement("option");
+    option.value = idx;
+    option.text = `${s.name} (🛡️ ${s.garrison})`;
+    select.appendChild(option);
+  });
+}
+
+function reportGarrisonLosses() {
+  const idx = parseInt(document.getElementById("garrisonSelect").value);
+  const amount = parseInt(document.getElementById("garrisonLossAmount").value) || 0;
+  const sys = systems[idx];
+  if (!sys || amount <= 0) return;
+
+  sys.garrison -= amount;
+  if (sys.garrison < 0) sys.garrison = 0;
+  createGrid();
+}
+
+function handleSystemClick(id) {
+  const target = systems[id];
+  const isPlayerFleet = fleets.includes(selectedFleet);
+
+  // Moving a selected fleet
+  if (selectedFleet && !selectedFleet.hasMoved && areAdjacent(selectedFleet.systemId, id)) {
+    const enemyFleet = isPlayerFleet
+      ? aiFleets.find(f => f.systemId === id)
+      : fleets.find(f => f.systemId === id);
+
+    if (enemyFleet) {
+      const won = confirm("Space battle! Did the selected fleet win?");
+      const fleetLost = confirm("Was the losing fleet destroyed?");
+      const loserFleet = won ? enemyFleet : selectedFleet;
+      const winnerFleet = won ? selectedFleet : enemyFleet;
+
+      // Apply 180 loss to loser
+      loserFleet.units -= 180;
+      if (loserFleet.units < 0) loserFleet.units = 0;
+
+      // Handle destruction logic
+      if (fleetLost) {
+        if (won) {
+          // Defender destroyed: remaining units go to garrison
+          target.garrison += loserFleet.units;
+          if (!isPlayerFleet) {
+            fleets = fleets.filter(f => f !== loserFleet);
+          } else {
+            aiFleets = aiFleets.filter(f => f !== loserFleet);
+          }
+        } else {
+          // Attacker destroyed: random % to origin garrison
+          const origin = systems[selectedFleet.systemId];
+          const percent = Math.floor(Math.random() * 51);
+          const recovered = Math.floor(loserFleet.units * (percent / 100));
+          origin.garrison += recovered;
+
+          if (isPlayerFleet) {
+            fleets = fleets.filter(f => f !== selectedFleet);
+            selectedFleet = null;
+          } else {
+            aiFleets = aiFleets.filter(f => f !== selectedFleet);
+          }
+
+          createGrid();
+          return;
+        }
+      }
+
+      // If attacker won and survived, move them
+      if (won && selectedFleet) {
+        selectedFleet.systemId = id;
+        selectedFleet.hasMoved = true;
+
+        const isEnemyOrNeutral = (isPlayerFleet && (target.aiControlled || (!target.conquered && !target.aiControlled))) ||
+                         (!isPlayerFleet && (target.conquered || (!target.conquered && !target.aiControlled)));
+
+const isNeutral = !target.conquered && !target.aiControlled;
+
+if (isEnemyOrNeutral) {
+  if (isNeutral) {
+    // Auto-resolve neutral planet capture
+    if (isPlayerFleet) {
+      target.conquered = true;
+      target.aiControlled = false;
+      target.garrison = 100;
+      selectedFleet.units -= target.garrison;
+    } else {
+      target.conquered = false;
+      target.aiControlled = true;
+      target.garrison = 100;
+      f.units -= target.garrison;
+      if (f.units < 0) f.units = 0;
+
+    }
+  } else {
+    const engageGround = confirm(`Do you want to engage in ground combat?
+Attacker: ${selectedFleet.units} vs Garrison: ${target.garrison}`);
+    if (engageGround) {
+      const wonGround = confirm("Was ground combat won?");
+      if (wonGround) {
+        if (isPlayerFleet) {
+          target.conquered = true;
+          target.aiControlled = false;
+          target.garrison = 100;
+        } else {
+          target.conquered = false;
+          target.aiControlled = true;
+          target.garrison = 100;
+        }
+      }
+    }
+  }
+}
+}
+
+    } else {
+      // No enemy fleet — move and possibly engage ground
+      selectedFleet.systemId = id;
+      selectedFleet.hasMoved = true;
+
+      const isEnemyOrNeutral = (isPlayerFleet && (!target.conquered || target.aiControlled)) ||
+                         (!isPlayerFleet && (target.conquered || (!target.conquered && !target.aiControlled)));
+
+const isNeutral = !target.conquered && !target.aiControlled;
+
+if (isEnemyOrNeutral) {
+  if (isNeutral) {
+    // Auto-resolve neutral planet capture
+    if (isPlayerFleet) {
+      target.conquered = true;
+      target.aiControlled = false;
+      target.garrison = 100;
+      selectedFleet.units -= target.garrison;
+    } else {
+      target.conquered = false;
+      target.aiControlled = true;
+      target.garrison = 100;
+      f.units -= target.garrison;
+      if (f.units < 0) f.units = 0;
+
+    }
+  } else {
+    const engageGround = confirm(`Do you want to engage in ground combat?
+Attacker: ${selectedFleet.units} vs Garrison: ${target.garrison}`);
+    if (engageGround) {
+      const wonGround = confirm("Was ground combat won?");
+      if (wonGround) {
+        if (isPlayerFleet) {
+          target.conquered = true;
+          target.aiControlled = false;
+          target.garrison = 100;
+        } else {
+          target.conquered = false;
+          target.aiControlled = true;
+          target.garrison = 100;
+        }
+      }
+    }
+  }
+}
+}
+
+    selectedSystem = target;
+    createGrid();
+    return;
+  }
+
+  // Select system or fleet
+  selectedSystem = target;
+  selectedFleet = fleets.find(f => f.systemId === id) || null;
+  createGrid();
+}
+
+
+function endTurn() {
+  // Player income
+  systems.forEach(sys => {
+  const hasEnemyOrbiting = aiFleets.some(f => f.systemId === sys.id);
+  if (sys.conquered && !hasEnemyOrbiting) {
+    playerResources += sys.income;
+  }
+});
+  fleets.forEach(f => f.hasMoved = false);
+
+  // AI income
+  systems.forEach(sys => {
+  const hasEnemyOrbiting = fleets.some(f => f.systemId === sys.id);
+  if (sys.aiControlled && !hasEnemyOrbiting) {
+    aiResources += sys.income;
+  }
+});
+  aiFleets.forEach(f => f.hasMoved = false);
+aiFleets.forEach(f => {
+  if (f.hasMoved) return;
+
+  const adjacents = [f.systemId - 1, f.systemId + 1, f.systemId - gridSize, f.systemId + gridSize]
+    .filter(id =>
+      id >= 0 && id < systems.length &&
+      areAdjacent(f.systemId, id)
+    );
+
+  const adjacentSystems = adjacents.map(id => systems[id]);
+
+  const neutralTargets = adjacentSystems.filter(s => !s.conquered && !s.aiControlled);
+  const playerTargets = adjacentSystems.filter(s => s.conquered && !s.aiControlled);
+  const priorityTargets = playerTargets.filter(s => ["Coruscant", "Naboo", "Kamino"].includes(s.name));
+
+  let target = null;
+  if (neutralTargets.length > 0) {
+    target = neutralTargets.sort((a, b) => b.income - a.income)[0];
+  } else if (priorityTargets.length > 0) {
+    target = priorityTargets.sort((a, b) => b.income - a.income)[0];
+  } else if (playerTargets.length > 0) {
+    target = playerTargets.sort((a, b) => b.income - a.income)[0];
+  }
+
+  if (target) {
+  if (!target.conquered && !target.aiControlled) {
+  // Auto-resolve neutral conquest
+  f.units -= target.garrison;
+  if (f.units < 0) f.units = 0;
+  target.aiControlled = true;
+  target.conquered = false;
+  target.garrison = 100;
+  f.systemId = target.id;
+  f.hasMoved = true;
+  const strategicPlanets = ["Geonosis", "Ryloth", "Mygeeto", "Felucia", "Mustafar", "Raxus Prime"];
+const planet = systems[f.systemId];
+if (planet.aiControlled && !planet.conquered) {
+  const available = 2500 - planet.garrison;
+  const toGarrison = Math.min(available, f.units);
+  if (toGarrison > 0) {
+    planet.garrison += toGarrison;
+    f.units -= toGarrison;
+  }
+}
+
+  return;
+}
+
+    const playerFleet = fleets.find(pf => pf.systemId === target.id);
+
+    if (playerFleet) {
+      alert(`AI is attacking ${target.name}.\nAI Fleet: ${f.units} vs Player Fleet: ${playerFleet.units}`);
+
+      const won = confirm(`Did the AI win the space battle at ${target.name}?`);
+      const destroyed = confirm("Was the losing fleet destroyed?");
+      const loserFleet = won ? playerFleet : f;
+      const winnerFleet = won ? f : playerFleet;
+
+      loserFleet.units -= 180;
+      if (loserFleet.units < 0) loserFleet.units = 0;
+
+      if (destroyed) {
+        if (won) {
+          target.garrison += playerFleet.units;
+          fleets = fleets.filter(pf => pf !== playerFleet);
+        } else {
+          const origin = systems[f.systemId];
+          const percent = Math.floor(Math.random() * 51);
+          const recovered = Math.floor(f.units * (percent / 100));
+          origin.garrison += recovered;
+          aiFleets = aiFleets.filter(af => af !== f);
+          return;
+        }
+      } else {
+        if (!won) {
+          const retreatTo = systems.find(s =>
+  s.aiControlled && !s.conquered && !fleets.some(pf => pf.systemId === s.id));
+          if (retreatTo) {
+            f.systemId = retreatTo.id;
+            f.hasMoved = true;
+            alert(`AI fleet retreated to ${retreatTo.name}`);
+          } else {
+            alert("AI fleet could not retreat — no valid friendly system.");
+          }
+          return;
+        }
+      }
+
+      if (won) {
+        f.systemId = target.id;
+        f.hasMoved = true;
+
+        alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+        if (target.garrison < f.units) {
+          const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+          if (success) {
+            alert(`AI successfully captured ${target.name}.`);
+            target.conquered = false;
+            target.aiControlled = true;
+            target.garrison = 100;
+          } else {
+            alert(`AI failed to capture ${target.name} and remains in orbit.`);
+          }
+        } else {
+          alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+        }
+
+const planet = systems[f.systemId];
+const availableSpace = 2500 - target.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+      }
+
+    } else {
+      // No fleet — neutral or unguarded system
+      f.systemId = target.id;
+      f.hasMoved = true;
+
+      alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+      if (target.garrison < f.units) {
+        const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+        if (success) {
+          alert(`AI successfully captured ${target.name}.`);
+          target.conquered = false;
+          target.aiControlled = true;
+          target.garrison = 100;
+        } else {
+          alert(`AI failed to capture ${target.name} and remains in orbit.`);
+        }
+      } else {
+        alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+      }
+
+const planet = systems[f.systemId];
+const availableSpace = 2500 - target.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+    }
+
+  } else {
+    // Move within AI territory if nothing else
+    const moveOptions = adjacentSystems.filter(s =>
+      s.aiControlled && !aiFleets.some(af => af.systemId === s.id)
+    );
+
+    if (moveOptions.length > 0) {
+      const moveTarget = moveOptions[Math.floor(Math.random() * moveOptions.length)];
+      f.systemId = moveTarget.id;
+      f.hasMoved = true;
+
+      const planet = systems[f.systemId];
+const availableSpace = 2500 - target.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+
+    }
+  }
+});
+
+  // === AI Replenish Phase ===
+  aiFleets.forEach(fleet => {
+    if (fleet.units < 1500 && aiResources > 0) {
+      const needed = 2000 - fleet.units;
+      const amount = Math.min(needed, Math.floor(aiResources * 2));
+      const cost = Math.ceil(amount / 2);
+      aiResources -= cost;
+      fleet.units += amount;
+    }
+  });
+
+  // === AI Movement / Attack Phase ===
+  aiFleets.forEach(f => {
+    if (f.hasMoved) return;
+
+    const adjacents = [f.systemId - 1, f.systemId + 1, f.systemId - gridSize, f.systemId + gridSize]
+  .filter(id =>
+    id >= 0 && id < systems.length &&
+    areAdjacent(f.systemId, id)
+  );
+
+const adjacentSystems = adjacents.map(id => systems[id]);
+
+const neutralTargets = adjacentSystems.filter(s => !s.conquered && !s.aiControlled);
+const playerTargets = adjacentSystems.filter(s => s.conquered && !s.aiControlled);
+const priorityPlanets = ["Coruscant", "Naboo", "Kamino"];
+const priorityTargets = playerTargets.filter(s => priorityPlanets.includes(s.name));
+
+// AI prefers: Neutral > Priority Player > Any Player
+let target = null;
+if (neutralTargets.length > 0) {
+  target = neutralTargets.sort((a, b) => b.income - a.income)[0];
+} else if (priorityTargets.length > 0) {
+  target = priorityTargets.sort((a, b) => b.income - a.income)[0];
+} else if (playerTargets.length > 0) {
+  target = playerTargets.sort((a, b) => b.income - a.income)[0];
+}
+
+// If a target exists, continue as before
+if (target) {
+  // (Insert space battle + ground combat logic here using 'target')
+} else {
+  // No enemies nearby — move within AI territory to spread out
+  const moveOptions = adjacentSystems.filter(s =>
+    s.aiControlled && !aiFleets.some(af => af.systemId === s.id)
+  );
+
+  if (moveOptions.length > 0) {
+    const moveTarget = moveOptions[Math.floor(Math.random() * moveOptions.length)];
+    f.systemId = moveTarget.id;
+    f.hasMoved = true;
+
+    // Garrison some units if possible
+    const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+  }
+}
+    if (targets.length > 0) {
+  const target = targets.sort((a, b) => a.garrison - b.garrison)[0];
+  const playerFleet = fleets.find(pf => pf.systemId === target.id);
+  if (target) {
+  const playerFleet = fleets.find(pf => pf.systemId === target.id);
+
+  if (playerFleet) {
+    alert(`AI is attacking ${target.name}.\nAI Fleet: ${f.units} vs Player Fleet: ${playerFleet.units}`);
+
+    const won = confirm(`Did the AI win the space battle at ${target.name}?`);
+    const destroyed = confirm("Was the losing fleet destroyed?");
+    const loserFleet = won ? playerFleet : f;
+    const winnerFleet = won ? f : playerFleet;
+
+    loserFleet.units -= 180;
+    if (loserFleet.units < 0) loserFleet.units = 0;
+
+    if (destroyed) {
+      if (won) {
+        target.garrison += playerFleet.units;
+        fleets = fleets.filter(pf => pf !== playerFleet);
+      } else {
+        const origin = systems[f.systemId];
+        const percent = Math.floor(Math.random() * 51);
+        const recovered = Math.floor(f.units * (percent / 100));
+        origin.garrison += recovered;
+        aiFleets = aiFleets.filter(af => af !== f);
+        return;
+      }
+    } else {
+      if (!won) {
+        const retreatTo = systems.find(s =>
+  s.aiControlled && !s.conquered && !fleets.some(pf => pf.systemId === s.id));
+        if (retreatTo) {
+          f.systemId = retreatTo.id;
+          f.hasMoved = true;
+          alert(`AI fleet retreated to ${retreatTo.name}`);
+        } else {
+          alert("AI fleet could not retreat — no valid friendly system.");
+        }
+        return;
+      }
+    }
+
+    // AI won
+    if (won) {
+      f.systemId = target.id;
+      f.hasMoved = true;
+
+      alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+      if (target.garrison < f.units) {
+        const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+        if (success) {
+          alert(`AI successfully captured ${target.name}.`);
+          target.conquered = false;
+          target.aiControlled = true;
+          target.garrison = 100;
+        } else {
+          alert(`AI failed to capture ${target.name} and remains in orbit.`);
+        }
+      } else {
+        alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+      }
+
+      const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+    }
+
+  } else {
+    // No fleet defending — neutral or empty system
+    f.systemId = target.id;
+    f.hasMoved = true;
+
+    alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+    if (target.garrison < f.units) {
+      const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+      if (success) {
+        alert(`AI successfully captured ${target.name}.`);
+        target.conquered = false;
+        target.aiControlled = true;
+        target.garrison = 100;
+      } else {
+        alert(`AI failed to capture ${target.name} and remains in orbit.`);
+      }
+    } else {
+      alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+    }
+
+    const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+  }
+}
+  if (playerFleet) {
+    alert(`AI is attacking ${target.name}.\nAI Fleet: ${f.units} vs Player Fleet: ${playerFleet.units}`);
+
+    const won = confirm(`Did the AI win the space battle at ${target.name}?`);
+    const destroyed = confirm("Was the losing fleet destroyed?");
+    const loserFleet = won ? playerFleet : f;
+    const winnerFleet = won ? f : playerFleet;
+
+    // Apply 180 loss
+    loserFleet.units -= 180;
+    if (loserFleet.units < 0) loserFleet.units = 0;
+
+    if (destroyed) {
+      if (won) {
+        target.garrison += playerFleet.units;
+        fleets = fleets.filter(pf => pf !== playerFleet);
+      } else {
+        const origin = systems[f.systemId];
+        const percent = Math.floor(Math.random() * 51);
+        const recovered = Math.floor(f.units * (percent / 100));
+        origin.garrison += recovered;
+        aiFleets = aiFleets.filter(af => af !== f);
+        return;
+      }
+    } else {
+      // Retreat for attacker if they lost and survived
+      if (!won) {
+        const retreatTo = systems.find(s =>
+          s.aiControlled && !s.conquered && s.id !== target.id
+        );
+
+        if (retreatTo) {
+          f.systemId = retreatTo.id;
+          f.hasMoved = true;
+          alert(`AI fleet retreated to ${retreatTo.name}`);
+        } else {
+          alert("AI fleet could not retreat — no valid friendly system.");
+        }
+        return;
+      }
+    }
+
+    // AI won
+    if (won) {
+      f.systemId = target.id;
+      f.hasMoved = true;
+
+      // AI engages ground combat based on garrison comparison
+      alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+if (target.garrison < f.units) {
+  const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+  if (success) {
+    alert(`AI successfully captured ${target.name}.`);
+    target.conquered = false;
+    target.aiControlled = true;
+    target.garrison = 100;
+  } else {
+    alert(`AI failed to capture ${target.name} and remains in orbit.`);
+    // AI fleet stays; system remains player-controlled
+  }
+} else {
+  alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+
+  // Planet is now blockaded: fleet sits in orbit but system is still player-controlled
+}
+
+      // Garrison extra units
+      const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+    }
+
+  } else {
+    // No fleet — auto conquest
+    f.systemId = target.id;
+f.hasMoved = true;
+
+alert(`AI is considering a ground invasion of ${target.name}.\nAI Fleet: ${f.units} vs Player Garrison: ${target.garrison}`);
+
+if (target.garrison < f.units) {
+  const success = confirm(`AI initiated a ground invasion at ${target.name}.\nWas the invasion successful?`);
+  if (success) {
+    alert(`AI successfully captured ${target.name}.`);
+    target.conquered = false;
+    target.aiControlled = true;
+    target.garrison = 100;
+  } else {
+    alert(`AI failed to capture ${target.name} and remains in orbit.`);
+    // AI fleet stays; system remains player-controlled
+  }
+} else {
+  alert(`AI decided not to invade ${target.name} and is now blockading it.`);
+
+  // Planet remains under player control, income blocked due to orbiting AI fleet
+}
+
+// Garrison after movement (whether invaded or not)
+const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+  }
+
+    } else {
+      // No player target: move to adjacent AI system without another fleet
+      const emptyTargets = adjacents
+        .map(id => systems[id])
+        .filter(s => s.aiControlled && !aiFleets.some(other => other.systemId === s.id));
+
+      if (emptyTargets.length > 0) {
+        const moveTarget = emptyTargets[Math.floor(Math.random() * emptyTargets.length)];
+        f.systemId = moveTarget.id;
+        f.hasMoved = true;
+
+        const planet = systems[f.systemId];
+const availableSpace = 2500 - planet.garrison;
+const garrisonAmount = Math.min(availableSpace, f.units);
+
+
+
+
+      }
+    }
+  });
+
+  // === AI Build Phase ===
+  if (aiResources >= 100) {
+    const bases = systems.filter(s =>
+      s.aiControlled && !aiFleets.some(f => f.systemId === s.id)
+    );
+
+    if (bases.length > 0) {
+      const base = bases[Math.floor(Math.random() * bases.length)];
+      aiFleets.push({ systemId: base.id, units: 250, hasMoved: false });
+      aiResources -= 100;
+    }
+  }
+
+  createGrid();
+}
+
+
+function createFleet() {
+  if (!selectedSystem || !selectedSystem.conquered) return alert("Select a player-owned system.");
+  if (playerResources < fleetCost) return alert("Not enough resources.");
+  fleets.push({ systemId: selectedSystem.id, units: 250, hasMoved: false });
+  playerResources -= fleetCost;
+  createGrid();
+}
+
+function boostEconomy() {
+  if (!selectedSystem || !selectedSystem.conquered || selectedSystem.boosted) return alert("Invalid system.");
+  if (playerResources < boostCost) return alert("Not enough resources.");
+  selectedSystem.income += 10;
+  selectedSystem.boosted = true;
+  playerResources -= boostCost;
+  createGrid();
+}
+
+function replenishUnits() {
+  const amount = parseInt(document.getElementById("replenishAmount").value) || 0;
+  if (!selectedFleet) return alert("Select a fleet.");
+  const cost = Math.ceil(amount / 2);
+  if (playerResources < cost) return alert("Not enough resources.");
+  selectedFleet.units += amount;
+  playerResources -= cost;
+  createGrid();
+}
+
+function garrisonUnits() {
+  if (!selectedFleet || !selectedSystem) return alert("Select a system and fleet.");
+  if (!selectedSystem.conquered) return alert("You can only garrison your own planets.");
+  const amount = parseInt(prompt("Units to garrison?")) || 0;
+  if (amount <= 0 || amount > selectedFleet.units) return alert("Invalid amount.");
+  selectedSystem.garrison += amount;
+  selectedFleet.units -= amount;
+  if (selectedFleet.units <= 0) {
+    fleets = fleets.filter(f => f !== selectedFleet);
+    selectedFleet = null;
+  }
+  createGrid();
+}
+
+function reportLosses() {
+  const loss = parseInt(document.getElementById("lossAmount").value) || 0;
+  if (!selectedFleet) return alert("Select a fleet.");
+  selectedFleet.units -= loss;
+  if (selectedFleet.units <= 0) {
+    fleets = fleets.filter(f => f !== selectedFleet);
+    selectedFleet = null;
+  }
+  createGrid();
+}
+
+function updateAISelect() {
+  const select = document.getElementById("aiFleetSelect");
+  select.innerHTML = "";
+  aiFleets.forEach((f, idx) => {
+    const sys = systems[f.systemId];
+    const option = document.createElement("option");
+    option.value = idx;
+    option.text = `AI Fleet at ${sys.name} (${f.units})`;
+    select.appendChild(option);
+  });
+}
+
+function reportAiLosses() {
+  const idx = parseInt(document.getElementById("aiFleetSelect").value);
+  const loss = parseInt(document.getElementById("aiLossAmount").value) || 0;
+  const fleet = aiFleets[idx];
+  if (!fleet) return;
+  fleet.units -= loss;
+  if (fleet.units <= 0) {
+    aiFleets.splice(idx, 1);
+  }
+  createGrid();
+}
+
+function updateResources() {
+  document.getElementById("resourceDisplay").innerText = `Player Resources: ${playerResources} | AI Resources: ${aiResources}`;
+}
+
+createGrid();
+</script>
+
+</body>
+</html>
