@@ -4,11 +4,10 @@ This is a simple browser-based strategy prototype inspired by the **Galactic Con
 
 ## How to Play
 
-1. Open `GalacticConquest.html` in a modern web browser.
+1. Open `GalacticConquest.html` in your web browser.
 2. When prompted, choose whether to play as the Republic or the CIS.  Your starting homeworld will be populated with an initial fleet.
 3. The grid shows every planet as a clickable square:
-   - **Green** indicates your starting world.
-   - **Red** indicates systems under control of the Republic/Empire.
+   - **Red** indicates systems under the control of the Republic/Empire.
    - **Blue** indicates systems controlled by the Separatists/Rebels.
 4. Select a system to view available actions.  Selecting a fleet shows options for moving or replenishing units.
 5. Use the control buttons below the grid to perform actions each turn:
