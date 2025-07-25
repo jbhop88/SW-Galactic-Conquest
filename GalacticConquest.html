@@ -97,6 +97,8 @@ let playerHeldBonuses=[], aiHeldBonuses=[];
 const rand=(a,b)=>{rngState=LCG(rngState);const v=rngState/2147483648;return a!==undefined?Math.floor(v*(b-a+1))+a:v};
 const getXY=id=>[id%gridSize,Math.floor(id/gridSize)];
 const adjacent=(id1,id2)=>{const[x1,y1]=getXY(id1),[x2,y2]=getXY(id2);return Math.abs(x1-x2)+Math.abs(y1-y2)===1};
+const isFriendly=(sys,isPlayer)=>isPlayer?(sys.conquered&&!sys.aiControlled):sys.aiControlled;
+const isNeutral=sys=>!sys.conquered&&!sys.aiControlled;
 
 /* ---------- INIT ---------- */
 {
@@ -114,8 +116,8 @@ const adjacent=(id1,id2)=>{const[x1,y1]=getXY(id1),[x2,y2]=getXY(id2);return Mat
   const homeAI=isRepublic?"Geonosis":"Coruscant";
   const pHome=systems.find(s=>s.name===homeP);
   const aiHome=systems.find(s=>s.name===homeAI);
-  fleets.push({systemId:pHome.id,units:500,hasMoved:false});
-  aiFleets.push({systemId:aiHome.id,units:500,hasMoved:false});
+  fleets.push({systemId:pHome.id,units:500,hasMoved:false,hasAttacked:false,moves:1});
+  aiFleets.push({systemId:aiHome.id,units:500,hasMoved:false,hasAttacked:false,moves:1});
 }
 
 /* ---------- RENDER ---------- */
@@ -212,7 +214,7 @@ function pickAIBonus(situation){
 function createFleet(){
   if(!selectedSystem||!selectedSystem.conquered)return alert("Pick a system you own.");
   if(playerResources<100)return alert("Need 100 resources.");
-  fleets.push({systemId:selectedSystem.id,units:250,hasMoved:false});
+  fleets.push({systemId:selectedSystem.id,units:250,hasMoved:false,hasAttacked:false,moves:1});
   playerResources-=100;
   createGrid();
 }
@@ -310,27 +312,29 @@ function aiTurn(){
     const bases=systems.filter(s=>s.aiControlled && !aiFleets.some(f=>f.systemId===s.id));
     if(bases.length){
       const b=bases[rand(0,bases.length-1)];
-      aiFleets.push({systemId:b.id,units:250,hasMoved:false});
+      aiFleets.push({systemId:b.id,units:250,hasMoved:false,hasAttacked:false,moves:1});
       aiResources-=100;
     }
   }
   
   /* 5. Move & Attack */
   aiFleets.forEach(f=>{
-    if(f.hasMoved)return;
+    if(f.moves<=0)return;
     const adj=[f.systemId-1,f.systemId+1,f.systemId-gridSize,f.systemId+gridSize]
       .filter(id=>id>=0 && id<systems.length && adjacent(f.systemId,id));
     const targets=adj.map(id=>systems[id]).filter(s=>!s.aiControlled).sort((a,b)=>a.garrison-b.garrison);
     if(!targets.length){
       const safe=adj.map(id=>systems[id]).filter(s=>s.aiControlled && !aiFleets.some(af=>af.systemId===s.id));
-      if(safe.length){const t=safe[rand(0,safe.length-1)];f.systemId=t.id;}
-      f.hasMoved=true;return;
+      if(safe.length){const t=safe[rand(0,safe.length-1)];f.systemId=t.id;f.moves--;if(f.moves<=0)f.hasMoved=true;}
+      else{f.moves=0;f.hasMoved=true;}
+      return;
     }
     const target=targets[0];
     const pf=fleets.find(p=>p.systemId===target.id);
     
     /* Handle space battle if player fleet present */
     if(pf){
+      if(f.hasAttacked){f.moves=0;f.hasMoved=true;return;}
       const aiBonusUsed = pickAIBonus({
         enemyUnits: pf.units,
         myUnits: f.units,
@@ -351,17 +355,22 @@ function aiTurn(){
         if(win){fleets=fleets.filter(x=>x!==pf);target.garrison+=pf.units;}
         else{aiFleets=aiFleets.filter(x=>x!==f);return;}
       }
-      if(!win){f.hasMoved=true;return;}
+      if(!win){f.moves=0;f.hasMoved=true;return;}
+      f.systemId=target.id;
+      f.hasAttacked=true;
+      f.moves=1;
+    } else {
+      f.systemId=target.id;
+      f.moves--;
+      if(f.moves<=0)f.hasMoved=true;
     }
-    
-    /* Move AI fleet to target system */
-    f.systemId=target.id;f.hasMoved=true;
-    
+
     /* Handle ground battle/planet capture */
     if(!target.conquered && !target.aiControlled){
       /* Neutral planet - automatic capture with garrison losses */
       f.units-=target.garrison;if(f.units<0)f.units=0;
       target.aiControlled=true;target.conquered=false;target.garrison=100;
+      f.hasAttacked=true; if(f.moves<1)f.moves=1;
     }else if(target.conquered){
       /* Player-controlled planet - ground battle needed */
       const aiBonusUsed = pickAIBonus({
@@ -381,12 +390,23 @@ function aiTurn(){
       if(winG){
         target.aiControlled=true;target.conquered=false;target.garrison=100;
       }
+      f.hasAttacked=true; if(f.moves<1)f.moves=1;
     }
     const spare=Math.min(2500-target.garrison,f.units-100);
     if(spare>0){target.garrison+=spare;f.units-=spare;}
+
+    if(f.moves>0){
+      const adj2=[f.systemId-1,f.systemId+1,f.systemId-gridSize,f.systemId+gridSize]
+        .filter(id=>id>=0 && id<systems.length && adjacent(f.systemId,id));
+      const retreat=adj2.map(id=>systems[id])
+        .filter(s=>s.aiControlled && !aiFleets.some(af=>af.systemId===s.id));
+      if(retreat.length){const r=retreat[rand(0,retreat.length-1)];f.systemId=r.id;}
+      f.moves=0;
+    }
+    f.hasMoved=true;
   });
-  fleets.forEach(f=>f.hasMoved=false);
-  aiFleets.forEach(f=>f.hasMoved=false);
+  fleets.forEach(f=>{f.hasMoved=false;f.hasAttacked=false;f.moves=1;});
+  aiFleets.forEach(f=>{f.hasMoved=false;f.hasAttacked=false;f.moves=1;});
   createGrid();
 }
 
@@ -394,9 +414,17 @@ function aiTurn(){
 function handleSystemClick(id){
   const target=systems[id];
   const isPlayer=fleets.includes(selectedFleet);
-  if(selectedFleet && !selectedFleet.hasMoved){
+  if(selectedFleet && selectedFleet.moves>0){
+    const friendly=isFriendly(target,isPlayer);
     const enemyFleet=isPlayer?aiFleets.find(f=>f.systemId===id):fleets.find(f=>f.systemId===id);
+
+    if(selectedFleet.hasAttacked && !friendly){
+      alert('This fleet already attacked this turn.');
+      selectedFleet=null;createGrid();return;
+    }
+
     if(enemyFleet){
+      if(selectedFleet.hasAttacked){alert('This fleet already attacked this turn.');selectedFleet=null;createGrid();return;}
       const plBonusUsed = pickPlayerBonus();
       const aiBonusUsed = pickAIBonus({
         enemyUnits: selectedFleet.units,
@@ -404,12 +432,12 @@ function handleSystemClick(id){
         isSpaceBattle: true,
         enemyGarrison: target.garrison
       });
-      
+
       let battleMessage = `Your fleet (${selectedFleet.units}) vs Enemy fleet (${enemyFleet.units}) at ${target.name}\n\n`;
       battleMessage += `Player uses bonus: ${plBonusUsed || 'NONE'}\n`;
       battleMessage += `AI uses bonus: ${aiBonusUsed || 'NONE'}\n\n`;
-      battleMessage += "Did your fleet win?";
-      
+      battleMessage += 'Did your fleet win?';
+
       const win = confirm(battleMessage);
       const loss=win?enemyFleet:selectedFleet;
       loss.units-=180;if(loss.units<0)loss.units=0;
@@ -417,29 +445,41 @@ function handleSystemClick(id){
         if(win){isPlayer?aiFleets.splice(aiFleets.indexOf(enemyFleet),1):fleets.splice(fleets.indexOf(selectedFleet),1);}
         else{isPlayer?fleets.splice(fleets.indexOf(selectedFleet),1):aiFleets.splice(aiFleets.indexOf(selectedFleet),1);selectedFleet=null;createGrid();return;}
       }
-      if(!win){selectedFleet.hasMoved=true;selectedFleet=null;createGrid();return;}
-    }
-    selectedFleet.systemId=id;selectedFleet.hasMoved=true;
-    if(!target.conquered && !target.aiControlled){
-      selectedFleet.units-=target.garrison;if(selectedFleet.units<0)selectedFleet.units=0;
-      target.conquered=isPlayer;target.aiControlled=!isPlayer;target.garrison=100;
+      if(!win){selectedFleet.moves=0;selectedFleet.hasMoved=true;selectedFleet=null;createGrid();return;}
+      selectedFleet.systemId=id;
+      selectedFleet.hasAttacked=true;
+      selectedFleet.moves=1;
     }else{
-      const plBonusUsed = pickPlayerBonus();
-      const aiBonusUsed = pickAIBonus({
-        enemyUnits: 0,
-        myUnits: 0,
-        isSpaceBattle: false,
-        enemyGarrison: target.garrison
-      });
-      
-      let groundMessage = `Your ground force (${selectedFleet.units}) vs Garrison (${target.garrison}) at ${target.name}\n\n`;
-      groundMessage += `Player uses bonus: ${plBonusUsed || 'NONE'}\n`;
-      groundMessage += `AI uses bonus: ${aiBonusUsed || 'NONE'}\n\n`;
-      groundMessage += "Did your ground force win?";
-      
-      const winG = confirm(groundMessage);
-      if(winG){
-        target.conquered=isPlayer;target.aiControlled=!isPlayer;target.garrison=100;
+      selectedFleet.systemId=id;
+      if(!friendly){
+        if(selectedFleet.hasAttacked){alert('This fleet already attacked this turn.');selectedFleet=null;createGrid();return;}
+        if(isNeutral(target)){
+          selectedFleet.units-=target.garrison;if(selectedFleet.units<0)selectedFleet.units=0;
+          target.conquered=isPlayer;target.aiControlled=!isPlayer;target.garrison=100;
+        }else{
+          const plBonusUsed = pickPlayerBonus();
+          const aiBonusUsed = pickAIBonus({
+            enemyUnits: 0,
+            myUnits: 0,
+            isSpaceBattle: false,
+            enemyGarrison: target.garrison
+          });
+
+          let groundMessage = `Your ground force (${selectedFleet.units}) vs Garrison (${target.garrison}) at ${target.name}\n\n`;
+          groundMessage += `Player uses bonus: ${plBonusUsed || 'NONE'}\n`;
+          groundMessage += `AI uses bonus: ${aiBonusUsed || 'NONE'}\n\n`;
+          groundMessage += 'Did your ground force win?';
+
+          const winG = confirm(groundMessage);
+          if(winG){
+            target.conquered=isPlayer;target.aiControlled=!isPlayer;target.garrison=100;
+          }
+        }
+        selectedFleet.hasAttacked=true;
+        selectedFleet.moves=1;
+      }else{
+        selectedFleet.moves--;
+        if(selectedFleet.moves<=0)selectedFleet.hasMoved=true;
       }
     }
     selectedFleet=null;createGrid();return;
