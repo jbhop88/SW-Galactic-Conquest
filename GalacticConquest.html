@@ -147,10 +147,11 @@ function createGrid(){
 }
 
 /* ---------- BONUS HELPERS ---------- */
-function pickPlayerBonus(){
+function pickPlayerBonus(context){
   if (!playerHeldBonuses.length) return null;
   const list = playerHeldBonuses.map((b,i)=>`${i+1}. ${b}`).join('\n');
-  const idx = prompt(`Choose your bonus to use:\n${list}\nOr Cancel to skip`);
+  const prefix = context ? context + '\n' : '';
+  const idx = prompt(`${prefix}Choose your bonus to use:\n${list}\nOr Cancel to skip`);
   if (idx === null || isNaN(idx) || idx < 1 || idx > playerHeldBonuses.length) return null;
   return playerHeldBonuses.splice(idx-1, 1)[0];
 }
@@ -341,7 +342,7 @@ function aiTurn(){
         isSpaceBattle: true,
         enemyGarrison: target.garrison
       });
-      const plBonusUsed = pickPlayerBonus();
+      const plBonusUsed = pickPlayerBonus(`Defend ${target.name}`);
       
       let battleMessage = `AI fleet (${f.units}) vs Player fleet (${pf.units}) at ${target.name}\n\n`;
       battleMessage += `AI uses bonus: ${aiBonusUsed || 'NONE'}\n`;
@@ -379,7 +380,7 @@ function aiTurn(){
         isSpaceBattle: false,
         enemyGarrison: target.garrison
       });
-      const plBonusUsed = pickPlayerBonus();
+      const plBonusUsed = pickPlayerBonus(`Defend ${target.name}`);
       
       let groundMessage = `AI ground force (${f.units}) vs Garrison (${target.garrison}) at ${target.name}\n\n`;
       groundMessage += `AI uses bonus: ${aiBonusUsed || 'NONE'}\n`;
@@ -392,8 +393,10 @@ function aiTurn(){
       }
       f.hasAttacked=true; if(f.moves<1)f.moves=1;
     }
-    const spare=Math.min(2500-target.garrison,f.units-100);
-    if(spare>0){target.garrison+=spare;f.units-=spare;}
+    if(target.aiControlled){
+      const spare=Math.min(2500-target.garrison,f.units-100);
+      if(spare>0){target.garrison+=spare;f.units-=spare;}
+    }
 
     if(f.moves>0){
       const adj2=[f.systemId-1,f.systemId+1,f.systemId-gridSize,f.systemId+gridSize]
